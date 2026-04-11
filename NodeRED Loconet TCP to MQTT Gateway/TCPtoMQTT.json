@@ -1,0 +1,207 @@
+[
+    {
+        "id": "07276cb420cb3db0",
+        "type": "debug",
+        "z": "7e49248c56615796",
+        "name": "debug 4",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 1320,
+        "y": 740,
+        "wires": []
+    },
+    {
+        "id": "5bad66aa2156975b",
+        "type": "inject",
+        "z": "7e49248c56615796",
+        "name": "Restart Timer",
+        "props": [
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "1",
+        "crontab": "",
+        "once": true,
+        "onceDelay": "2",
+        "topic": "ticker",
+        "x": 160,
+        "y": 680,
+        "wires": [
+            [
+                "b5d2d4118e85c326"
+            ]
+        ]
+    },
+    {
+        "id": "517316cc5d672864",
+        "type": "tcp request",
+        "z": "7e49248c56615796",
+        "name": "",
+        "server": "192.168.87.235",
+        "port": "1234",
+        "out": "sit",
+        "ret": "string",
+        "splitc": " ",
+        "newline": "",
+        "trim": false,
+        "tls": "",
+        "x": 770,
+        "y": 800,
+        "wires": [
+            [
+                "7bfc885d55daed4b"
+            ]
+        ]
+    },
+    {
+        "id": "4e2809f55b08b3e5",
+        "type": "function",
+        "z": "7e49248c56615796",
+        "name": "MQTT to LNTCP",
+        "func": "var brokerGateway = global.get(\"GWName\");\nif ((msg.payload.From != brokerGateway) && (msg.payload.Valid == 1)) \n{\n    var tcpMsg = {\"topic\":\"totcp\", \"payload\" : \"\"};\n    var msgStr = \"SEND\";\n    var msgLen = msg.payload.Data.length;\n    for (var i = 0; i < msgLen; i++)\n    {\n        msgStr = msgStr + \" \" + msg.payload.Data[i].toString(16).toUpperCase(); \n    }\n    tcpMsg.payload = msgStr + \"\\n\";\n    global.set(\"ReqID\", msg.payload.ReqID);\n    return tcpMsg;\n}\nreturn null;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "// Code added here will be run once\n// whenever the node is started.\nvar brokerGateway = \"GW\";\nglobal.set(\"GWName\", brokerGateway);\n",
+        "finalize": "",
+        "libs": [],
+        "x": 510,
+        "y": 800,
+        "wires": [
+            [
+                "517316cc5d672864"
+            ]
+        ]
+    },
+    {
+        "id": "566d29efa2ecaa9a",
+        "type": "mqtt in",
+        "z": "7e49248c56615796",
+        "name": "From MQTT",
+        "topic": "lnIn",
+        "qos": "1",
+        "datatype": "auto-detect",
+        "broker": "9bf877ba.d9026",
+        "nl": false,
+        "rap": false,
+        "inputs": 0,
+        "x": 150,
+        "y": 800,
+        "wires": [
+            [
+                "690e1805cb1a7e57"
+            ]
+        ]
+    },
+    {
+        "id": "690e1805cb1a7e57",
+        "type": "json",
+        "z": "7e49248c56615796",
+        "name": "",
+        "property": "payload",
+        "action": "obj",
+        "pretty": false,
+        "x": 310,
+        "y": 800,
+        "wires": [
+            [
+                "4e2809f55b08b3e5"
+            ]
+        ]
+    },
+    {
+        "id": "7bfc885d55daed4b",
+        "type": "function",
+        "z": "7e49248c56615796",
+        "name": "LNTCP to MQTT",
+        "func": "var brokerGateway = global.get(\"GWName\");\nvar MQTTTempl = { \"topic\": \"lnIn\", \"payload\": { \"From\": brokerGateway, \"ReqID\": 0, \"ErrorFlags\": 16, \"MsgType\": \"LN\", \"Valid\": 1, \"Data\": []}};\nvar inpStr = msg.payload;\nvar outMsg = [];\n\n\n\nfunction procSubStr(msgpart)\n{\n  const cleanStr = msgpart.trim().replace(\"/n\", '').replace(\"/r\", '');\n  var msgArray = cleanStr.split(\" \");\n  if (msgArray.length > 0)\n    switch (msgArray[0])\n    {\n      case \"RECEIVE\":\n      {\n        var newMsg = JSON.parse(JSON.stringify(MQTTTempl));\n        for (var i = 1; i < msgArray.length; i++)\n        {\n          newMsg.payload.Data.push(parseInt(msgArray[i],16));\n        }\n        if (newMsg.payload.Data[0] == 0xB4)\n        {\n          var reqID = global.get(\"ReqID\");\n          if (reqID != undefined)\n            newMsg.payload.ReqID = reqID;\n        }\n//        node.warn(newMsg);\n        outMsg.push(newMsg);\n      }\n      break;\n      default: return null;\n    }\n  return null;\n}\n\nvar currTime = Date.now()/1000;\nglobal.set(\"lastMsg\", currTime);\n\nvar subStrStart = 0;\nvar subStrEnd = inpStr.indexOf(\"\\n\", subStrStart);\nwhile (subStrEnd >= 0)\n{\n    procSubStr(inpStr.substring(subStrStart, subStrEnd + 1));\n    subStrStart = subStrEnd + 1;\n    subStrEnd = inpStr.indexOf(\"\\n\", subStrStart);\n}\n//node.warn(\"EOF\");\n//node.warn(outMsg);\nreturn [outMsg];\n",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1050,
+        "y": 800,
+        "wires": [
+            [
+                "07276cb420cb3db0",
+                "dca80a9ef16694ca"
+            ]
+        ]
+    },
+    {
+        "id": "dca80a9ef16694ca",
+        "type": "mqtt out",
+        "z": "7e49248c56615796",
+        "name": "To MQTT",
+        "topic": "lnIn",
+        "qos": "1",
+        "retain": "",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "9bf877ba.d9026",
+        "x": 1320,
+        "y": 800,
+        "wires": []
+    },
+    {
+        "id": "b5d2d4118e85c326",
+        "type": "function",
+        "z": "7e49248c56615796",
+        "name": "ConnectionMonitor",
+        "func": "const msgtimeout = 60;\nconst repeattimeout = 45;\n\nif (msg.topic == \"ticker\")\n{\n    var currTime = Date.now()/1000;\n    var lastTime = global.get(\"lastMsg\");\n    if ((currTime - lastTime) > msgtimeout)\n    {\n        var tcpMsg = {\"topic\":\"totcp\", \"payload\" : \"\"};\n        var msgStr = \"SEND BB 7B 00 3F\";\n        tcpMsg.payload = msgStr + \"\\n\";\n        global.set(\"lastMsg\", currTime - repeattimeout);\n        return tcpMsg;\n    }\n}\n\nreturn null;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "// Code added here will be run once\n// whenever the node is started.\nvar brokerGateway = \"GW\";\nglobal.set(\"GWName\", brokerGateway);\n",
+        "finalize": "",
+        "libs": [],
+        "x": 510,
+        "y": 680,
+        "wires": [
+            [
+                "517316cc5d672864"
+            ]
+        ]
+    },
+    {
+        "id": "9bf877ba.d9026",
+        "type": "mqtt-broker",
+        "name": "LocalRaspi",
+        "broker": "192.168.87.50",
+        "port": "1883",
+        "clientid": "",
+        "autoConnect": true,
+        "usetls": false,
+        "protocolVersion": "4",
+        "keepalive": "60",
+        "cleansession": true,
+        "autoUnsubscribe": true,
+        "birthTopic": "",
+        "birthQos": "0",
+        "birthPayload": "",
+        "birthMsg": {},
+        "closeTopic": "",
+        "closeQos": "0",
+        "closePayload": "",
+        "closeMsg": {},
+        "willTopic": "",
+        "willQos": "0",
+        "willPayload": "",
+        "willMsg": {},
+        "userProps": "",
+        "sessionExpiry": ""
+    }
+]

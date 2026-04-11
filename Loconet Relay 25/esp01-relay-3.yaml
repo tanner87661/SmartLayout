@@ -1,0 +1,208 @@
+esphome:
+  name: esp01-relay-3
+  friendly_name: ESP01_Relay_3
+
+esp8266:
+  board: esp01_1m
+
+globals:
+  - id: my_dcc_addr1
+    type: int
+    restore_value: yes
+    initial_value: '25'
+  - id: my_dcc_base
+    type: int
+    restore_value: yes
+    initial_value: '0'
+#  - id: my_topic
+#    type: std::string
+#    restore_value: yes
+#    initial_value: '"lnIn"'
+
+number:
+  - platform: template
+    name: "Switch Address"
+    id: dcc_addr_input1
+    min_value: 0
+    max_value: 2048
+    step: 1
+    initial_value: 25
+    optimistic: true
+    set_action:
+      then:
+        - lambda: |-
+            id(my_dcc_addr1) = (int)x;  
+
+  - platform: template
+    name: "Address Base"
+    id: dcc_base_input
+    min_value: 0
+    max_value: 1
+    step: 1
+    initial_value: 0
+    optimistic: true
+    set_action:
+      then:
+        - lambda: |-
+            id(my_dcc_base) = (int)x;  
+
+# Enable logging
+logger:
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: "gcasESvA5y6yku6acbpbReS9iNTIik/vb70q2ZjeM90="
+
+ota:
+  - platform: esphome
+    password: "46fc3aad85101f01110b70a6422c0d66"
+
+wifi:
+  networks:
+  - ssid: !secret wifi_ssid_1
+    password: !secret wifi_password_1
+  - ssid: !secret wifi_ssid_2
+    password: !secret wifi_password_2
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "Esp01-Relay-3 Fallback Hotspot"
+    password: "CaleraDeTanner"
+
+captive_portal:
+
+web_server:
+  port: 80
+  include_internal: true
+
+#external_components:
+#  - source: github://tanner87661/ESPHome/components  # ← change to your repo
+#    components: [loconet_tcp]
+
+#loconet_tcp:
+#  id: loconet
+#  host: 192.168.87.235
+#  port: 1234
+
+#  on_receive:
+#    - lambda: |-
+#        ESP_LOGI("main", "RECEIVE: %s", x.c_str());
+
+#  on_sent_ok:
+#    - lambda: |-
+#        ESP_LOGI("main", "SENT OK: %s", x.c_str());
+
+#interval:
+#  - interval: 10s
+#    then:
+#      - lambda: |-
+#          id(loconet).send("HELLO");
+
+json:
+
+mqtt:
+  broker: !secret mqtt_broker
+#  port: !secret mqtt_port
+  topic_prefix: "esp01/relay_3"
+
+  on_json_message:
+    - topic: lnIn
+      then:
+        - lambda: |-
+            int dcc_switch_address = id(my_dcc_addr1);
+            int dcc_addr_base = id(my_dcc_base);
+            if ((x.containsKey("Valid")) && (x.containsKey("MsgType")))
+            {
+              int temp = x["Valid"];
+              String msgtype = x["MsgType"];
+              if (temp == 1 && msgtype == "LN")
+              {
+                if (x.containsKey("Data") && x["Data"].is<JsonArrayConst>())
+                {
+                  JsonArrayConst lnMsg = x["Data"].as<JsonArrayConst>();
+                  int opc = lnMsg[0];
+                  if ((opc == 0xB0) || (opc == 0xBD)) //SW_REQ or SW_ACK
+                  {
+                    int b1 = lnMsg[1];
+                    int b2 = lnMsg[2];
+                    int dccaddr = ((b2 & 0x0F) << 7) + b1 + dcc_addr_base;
+                    if (dccaddr == dcc_switch_address)
+                    {
+                      int dccdir = (b2 & 0x20) >> 5;
+                      if (dccdir == 1)
+                      {
+                        id(esp0103).turn_on();
+                      }
+                      else
+                      {
+                        id(esp0103).turn_off();
+                      }
+                    }
+                  }
+                }
+              }
+            }
+
+# Relay output configuration
+switch:
+  - platform: gpio
+    pin:
+      number: GPIO0   # Change to GPIO2 if your relay is wired there
+      inverted: true  # Active LOW relay
+    name: "ESP01 Relay3"
+    id: esp0103
+    on_turn_on:
+      - mqtt.publish:
+          topic: lnIn
+          payload: !lambda |-
+            int dcc_switch_address = id(my_dcc_addr1);
+            int dcc_addr_base = id(my_dcc_base);
+            int opcode = 0xB0;
+            int tech_addr1 = (dcc_switch_address - dcc_addr_base) & 0x7F;
+            int tech_addr2 = ((dcc_switch_address - dcc_addr_base) & 0x780) >> 7;
+            if (id(esp0103).state == 1)
+              tech_addr2 = tech_addr2 + 0x20;
+            int xordata = opcode ^ tech_addr1 ^ tech_addr2 ^ 0xFF;
+            DynamicJsonDocument doc(640);
+            char myStatusMsg[512];
+            doc["From"] = "ESP01 Relay3";
+            doc["Valid"] = 1;
+            doc["MsgType"] = "LN";
+            doc["ReqID"] = 0;
+            JsonArray Data = doc.createNestedArray("Data");
+            Data.add(opcode);
+            Data.add(tech_addr1);
+            Data.add(tech_addr2);
+            Data.add(xordata);
+            serializeJson(doc, myStatusMsg);
+            return std::string(myStatusMsg);
+    on_turn_off:
+      - mqtt.publish:
+          topic: lnIn
+          payload: !lambda |-
+            int dcc_switch_address = id(my_dcc_addr1);
+            int dcc_addr_base = id(my_dcc_base);
+            int opcode = 0xB0;
+            int tech_addr1 = (dcc_switch_address - dcc_addr_base) & 0x7F;
+            int tech_addr2 = ((dcc_switch_address - dcc_addr_base) & 0x780) >> 7;
+            if (id(esp0103).state == 1)
+              tech_addr2 = tech_addr2 + 0x20;
+            int xordata = opcode ^ tech_addr1 ^ tech_addr2 ^ 0xFF;
+            DynamicJsonDocument doc(640);
+            char myStatusMsg[512];
+            doc["From"] = "ESP01 Relay3";
+            doc["Valid"] = 1;
+            doc["MsgType"] = "LN";
+            doc["ReqID"] = 0;
+            JsonArray Data = doc.createNestedArray("Data");
+            Data.add(opcode);
+            Data.add(tech_addr1);
+            Data.add(tech_addr2);
+            Data.add(xordata);
+            serializeJson(doc, myStatusMsg);
+            return std::string(myStatusMsg);
+
+    restore_mode: RESTORE_DEFAULT_OFF  # Keeps relay off after reboot
+
+ 

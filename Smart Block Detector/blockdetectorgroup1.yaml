@@ -1,0 +1,671 @@
+esphome:
+  name: blockdetectorgroup1
+  friendly_name: BlockDetectorGroup1
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+globals:
+  - id: inp_gr_addr1
+    type: int
+    restore_value: yes
+    initial_value: '24'
+  - id: inp_gr_addr2
+    type: int
+    restore_value: yes
+    initial_value: '32'
+  - id: opc_inp_rep
+    type: int
+    restore_value: yes
+    initial_value: '0xB2'
+  - id: my_dcc_addr1
+    type: int
+    restore_value: yes
+    initial_value: '1016'
+  - id: my_dcc_base
+    type: int
+    restore_value: yes
+    initial_value: '1'
+  - id: inp_rep_nr
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: inp_rep_state
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+number:
+  - platform: template
+    name: "Input Group 1"
+    id: inp_gr_addr1_inp
+    min_value: 0
+    max_value: 4088
+    step: 8
+    initial_value: 24
+    restore_value: true
+    optimistic: true
+    set_action:
+      then:
+        - lambda: |-
+            id(inp_gr_addr1) = (int)x;  
+   
+  - platform: template
+    name: "Input Group 2"
+    id: inp_gr_addr2_inp
+    min_value: 0
+    max_value: 4088
+    step: 8
+    initial_value: 32
+    restore_value: true
+    optimistic: true
+    set_action:
+      then:
+        - lambda: |-
+            id(inp_gr_addr2) = (int)x;  
+  - platform: template
+    name: "Int Switch Address"
+    id: dcc_addr_input1
+    min_value: 0
+    max_value: 2048
+    step: 1
+    initial_value: 1016
+    restore_value: true
+    optimistic: true
+    set_action:
+      then:
+        - lambda: |-
+            id(my_dcc_addr1) = (int)x;  
+
+  - platform: template
+    name: "Address Base"
+    id: dcc_base_input
+    min_value: 0
+    max_value: 1
+    step: 1
+    initial_value: 1
+    restore_value: true
+    optimistic: true
+    set_action:
+      then:
+        - lambda: |-
+            id(my_dcc_base) = (int)x;  
+
+#
+# Enable logging
+logger:
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: "4HIuW+JctwuH0r1J52qbdaHZRV2rdSqJn6rBLotV1kw="
+
+ota:
+  - platform: esphome
+    password: "b9d4c9f96d739b0e6c816c4a67c7d7e6"
+
+wifi:
+  networks:
+  - ssid: !secret wifi_ssid_3
+    password: !secret wifi_password_3
+  - ssid: !secret wifi_ssid_2
+    password: !secret wifi_password_2
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "Blockdetectorgroup1"
+    password: "CaleraDeTanner"
+
+captive_portal:
+
+web_server:
+  port: 80
+  include_internal: true
+
+json:
+
+mqtt:
+  broker: !secret mqtt_broker
+  topic_prefix: "bldet"
+
+  on_json_message:
+    - topic: lnIn
+      then:
+        - lambda: |-
+            int dcc_switch_address = id(my_dcc_addr1); 
+            int dcc_addr_base = id(my_dcc_base);
+            if ((x.containsKey("Valid")) && (x.containsKey("MsgType")))
+            {
+              int temp = x["Valid"];
+              String msgtype = x["MsgType"];
+              if ((temp == 1) && (msgtype == "LN"))
+              {
+                if (x.containsKey("Data") && x["Data"].is<JsonArrayConst>())
+                {
+                  JsonArrayConst lnMsg = x["Data"].as<JsonArrayConst>();
+                  int opc = lnMsg[0];
+                  if (opc == 0xB0) //SW_REQ
+                  {
+                    int b1 = lnMsg[1];
+                    int b2 = lnMsg[2];
+                    int dccaddr = ((b2 & 0x0F) << 7) + b1 - dcc_switch_address + dcc_addr_base;
+                    int dccdir = (b2 & 0x20) >> 5;
+                    //if ((dccaddr >= 0) && (dccaddr < 4))
+                    //ESP_LOGD("main", "Address %i", dccaddr);
+                    switch (dccaddr)
+                    {
+                      case 0:
+                        switch (dccdir)
+                        {
+                          case 0:
+                            {
+                            id(inp_rep_nr) = id(inp_gr_addr1) + 7;
+                            id(inp_rep_state) = id(sens11).state;
+                            id(send_inp_rep).execute();
+                            id(inp_rep_nr) = id(inp_gr_addr2) + 7;
+                            id(inp_rep_state) = id(sens21).state;
+                            id(send_inp_rep).execute();
+                            }
+                            break;
+                          case 1:
+                            {
+                            id(inp_rep_nr) = id(inp_gr_addr1) + 3;
+                            id(inp_rep_state) = id(sens15).state;
+                            id(send_inp_rep).execute();
+                            id(inp_rep_nr) = id(inp_gr_addr2) + 3;
+                            id(inp_rep_state) = id(sens25).state;
+                            id(send_inp_rep).execute();
+                            }
+                            break;
+                        }
+                        break;
+                      case 1:
+                        switch (dccdir)
+                        {
+                          case 0:
+                            {
+                            id(inp_rep_nr) = id(inp_gr_addr1) + 6;
+                            id(inp_rep_state) = id(sens12).state;
+                            id(send_inp_rep).execute();
+                            id(inp_rep_nr) = id(inp_gr_addr2) + 6;
+                            id(inp_rep_state) = id(sens22).state;
+                            id(send_inp_rep).execute();
+                            }
+                            break;
+                          case 1:
+                            {
+                            id(inp_rep_nr) = id(inp_gr_addr1) + 2;
+                            id(inp_rep_state) = id(sens16).state;
+                            id(send_inp_rep).execute();
+                            id(inp_rep_nr) = id(inp_gr_addr2) + 2;
+                            id(inp_rep_state) = id(sens26).state;
+                            id(send_inp_rep).execute();
+                            }
+                            break;
+                        }
+                        break;
+                      case 2:
+                        switch (dccdir)
+                        {
+                          case 0:
+                            {
+                            id(inp_rep_nr) = id(inp_gr_addr1) + 5;
+                            id(inp_rep_state) = id(sens13).state;
+                            id(send_inp_rep).execute();
+                            id(inp_rep_nr) = id(inp_gr_addr2) + 5;
+                            id(inp_rep_state) = id(sens23).state;
+                            id(send_inp_rep).execute();
+                            }
+                            break;
+                          case 1:
+                            {
+                            id(inp_rep_nr) = id(inp_gr_addr1) + 1;
+                            id(inp_rep_state) = id(sens17).state;
+                            id(send_inp_rep).execute();
+                            id(inp_rep_nr) = id(inp_gr_addr2) + 1;
+                            id(inp_rep_state) = id(sens27).state;
+                            id(send_inp_rep).execute();
+                            }
+                            break;
+                        }
+                        break;
+                      case 3:
+                        switch (dccdir)
+                        {
+                          case 0:
+                            {
+                            id(inp_rep_nr) = id(inp_gr_addr1) + 4;
+                            id(inp_rep_state) = id(sens14).state;
+                            id(send_inp_rep).execute();
+                            id(inp_rep_nr) = id(inp_gr_addr2) + 4;
+                            id(inp_rep_state) = id(sens24).state;
+                            id(send_inp_rep).execute();
+                            }
+                            break;
+                          case 1:
+                            {
+                            id(inp_rep_nr) = id(inp_gr_addr1);
+                            id(inp_rep_state) = id(sens18).state;
+                            id(send_inp_rep).execute();
+                            id(inp_rep_nr) = id(inp_gr_addr2);
+                            id(inp_rep_state) = id(sens28).state;
+                            id(send_inp_rep).execute();
+                            }
+                            break;
+                        }
+                        break;
+                    }
+                  }
+                }
+              }
+
+            }
+
+script:
+  - id: send_inp_rep
+    then:
+     - mqtt.publish_json:
+          topic: lnIn
+          payload: !lambda |-
+            int tech_addr1 = (id(inp_rep_nr) >> 1) & 0x7F;
+            int tech_addr2 = (((id(inp_rep_nr) >> 1) & 0x780) >> 7) + ((id(inp_rep_nr) & 0x0001) << 5) + 0x40 + (id(inp_rep_state) << 4);
+            int xordata = id(opc_inp_rep) ^ tech_addr1 ^ tech_addr2 ^ 0xFF;
+            root["From"] = "InpModule";
+            root["Valid"] = 1;
+            root["MsgType"] = "LN";
+            root["ReqID"] = 0;
+            JsonArray Data = root.createNestedArray("Data");
+            root["Data"] = Data;
+            Data.add(id(opc_inp_rep));
+            Data.add(tech_addr1);
+            Data.add(tech_addr2);
+            Data.add(xordata);
+ 
+
+# Digital sensor configuration
+binary_sensor:
+  - platform: gpio
+    id: sens11
+    pin:
+      number: GPIO19       # Change to your sensor's pin
+      mode: INPUT_PULLUP   # Use pull-up if sensor is open-drain
+      inverted: true       # Invert if sensor pulls low when active
+    name: "gr1_det1"
+    device_class: occupancy # Change to motion, door, etc. if needed
+    filters:
+      - delayed_on: 100ms   # Debounce ON
+      - delayed_off: 200ms  # Debounce OFF
+    on_press:
+      then:
+        - lambda: |-
+            id(inp_rep_nr) = id(inp_gr_addr1) + 7;
+            id(inp_rep_state) = 1;
+            id(send_inp_rep).execute();
+    on_release:
+      then:
+        - lambda: |-
+            id(inp_rep_nr) = id(inp_gr_addr1) + 7;
+            id(inp_rep_state) = 0;
+            id(send_inp_rep).execute();
+
+  - platform: gpio
+    id: sens12
+    pin:
+      number: GPIO18       # Change to your sensor's pin
+      mode: INPUT_PULLUP   # Use pull-up if sensor is open-drain
+      inverted: true       # Invert if sensor pulls low when active
+    name: "gr1_det2"
+    device_class: occupancy # Change to motion, door, etc. if needed
+    filters:
+      - delayed_on: 100ms   # Debounce ON
+      - delayed_off: 200ms  # Debounce OFF
+    on_press:
+      then:
+        - lambda: |-
+            id(inp_rep_nr) = id(inp_gr_addr1) + 6;
+            id(inp_rep_state) = 1;
+            id(send_inp_rep).execute();
+    on_release:
+      then:
+        - lambda: |-
+            id(inp_rep_nr) = id(inp_gr_addr1) + 6;
+            id(inp_rep_state) = 0;
+            id(send_inp_rep).execute();
+
+  - platform: gpio
+    id: sens13
+    pin:
+      number: GPIO05       # Change to your sensor's pin
+      mode: INPUT_PULLUP   # Use pull-up if sensor is open-drain
+      inverted: true       # Invert if sensor pulls low when active
+    name: "gr1_det3"
+    device_class: occupancy # Change to motion, door, etc. if needed
+    filters:
+      - delayed_on: 100ms   # Debounce ON
+      - delayed_off: 200ms  # Debounce OFF
+    on_press:
+      then:
+        - lambda: |-
+            id(inp_rep_nr) = id(inp_gr_addr1) + 5;
+            id(inp_rep_state) = 1;
+            id(send_inp_rep).execute();
+    on_release:
+      then:
+        - lambda: |-
+            id(inp_rep_nr) = id(inp_gr_addr1) + 5;
+            id(inp_rep_state) = 0;
+            id(send_inp_rep).execute();
+
+  - platform: gpio
+    id: sens14
+    pin:
+      number: GPIO17       # Change to your sensor's pin
+      mode: INPUT_PULLUP   # Use pull-up if sensor is open-drain
+      inverted: true       # Invert if sensor pulls low when active
+    name: "gr1_det4"
+    device_class: occupancy # Change to motion, door, etc. if needed
+    filters:
+      - delayed_on: 100ms   # Debounce ON
+      - delayed_off: 200ms  # Debounce OFF
+    on_press:
+      then:
+        - lambda: |-
+            id(inp_rep_nr) = id(inp_gr_addr1) + 4;
+            id(inp_rep_state) = 1;
+            id(send_inp_rep).execute();
+    on_release:
+      then:
+        - lambda: |-
+            id(inp_rep_nr) = id(inp_gr_addr1) + 4;
+            id(inp_rep_state) = 0;
+            id(send_inp_rep).execute();
+
+  - platform: gpio
+    id: sens15
+    pin:
+      number: GPIO16       # Change to your sensor's pin
+      mode: INPUT_PULLUP   # Use pull-up if sensor is open-drain
+      inverted: true       # Invert if sensor pulls low when active
+    name: "gr1_det5"
+    device_class: occupancy # Change to motion, door, etc. if needed
+    filters:
+      - delayed_on: 100ms   # Debounce ON
+      - delayed_off: 200ms  # Debounce OFF
+    on_press:
+      then:
+        - lambda: |-
+            id(inp_rep_nr) = id(inp_gr_addr1) + 3;
+            id(inp_rep_state) = 1;
+            id(send_inp_rep).execute();
+    on_release:
+      then:
+        - lambda: |-
+            id(inp_rep_nr) = id(inp_gr_addr1) + 3;
+            id(inp_rep_state) = 0;
+            id(send_inp_rep).execute();
+
+  - platform: gpio
+    id: sens16
+    pin:
+      number: GPIO04       # Change to your sensor's pin
+      mode: INPUT_PULLUP   # Use pull-up if sensor is open-drain
+      inverted: true       # Invert if sensor pulls low when active
+    name: "gr1_det6"
+    device_class: occupancy # Change to motion, door, etc. if needed
+    filters:
+      - delayed_on: 100ms   # Debounce ON
+      - delayed_off: 200ms  # Debounce OFF
+    on_press:
+      then:
+        - lambda: |-
+            id(inp_rep_nr) = id(inp_gr_addr1) + 2;
+            id(inp_rep_state) = 1;
+            id(send_inp_rep).execute();
+    on_release:
+      then:
+        - lambda: |-
+            id(inp_rep_nr) = id(inp_gr_addr1) + 2;
+            id(inp_rep_state) = 0;
+            id(send_inp_rep).execute();
+
+  - platform: gpio
+    id: sens17
+    pin:
+      number: GPIO00       # Change to your sensor's pin
+      mode: INPUT_PULLUP   # Use pull-up if sensor is open-drain
+      inverted: true       # Invert if sensor pulls low when active
+    name: "gr1_det7"
+    device_class: occupancy # Change to motion, door, etc. if needed
+    filters:
+      - delayed_on: 100ms   # Debounce ON
+      - delayed_off: 200ms  # Debounce OFF
+    on_press:
+      then:
+        - lambda: |-
+            id(inp_rep_nr) = id(inp_gr_addr1) + 1;
+            id(inp_rep_state) = 1;
+            id(send_inp_rep).execute();
+    on_release:
+      then:
+        - lambda: |-
+            id(inp_rep_nr) = id(inp_gr_addr1) + 1;
+            id(inp_rep_state) = 0;
+            id(send_inp_rep).execute();
+
+  - platform: gpio
+    id: sens18
+    pin:
+      number: GPIO02       # Change to your sensor's pin
+      mode: INPUT_PULLUP   # Use pull-up if sensor is open-drain
+      inverted: true       # Invert if sensor pulls low when active
+    name: "gr1_det8"
+    device_class: occupancy # Change to motion, door, etc. if needed
+    filters:
+      - delayed_on: 100ms   # Debounce ON
+      - delayed_off: 200ms  # Debounce OFF
+    on_press:
+      then:
+        - lambda: |-
+            id(inp_rep_nr) = id(inp_gr_addr1);
+            id(inp_rep_state) = 1;
+            id(send_inp_rep).execute();
+    on_release:
+      then:
+        - lambda: |-
+            id(inp_rep_nr) = id(inp_gr_addr1);
+            id(inp_rep_state) = 0;
+            id(send_inp_rep).execute();
+
+  - platform: gpio
+    id: sens21
+    pin:
+      number: GPIO12       # Change to your sensor's pin
+      mode: INPUT_PULLUP   # Use pull-up if sensor is open-drain
+      inverted: true       # Invert if sensor pulls low when active
+    name: "gr2_det1"
+    device_class: occupancy # Change to motion, door, etc. if needed
+    filters:
+      - delayed_on: 100ms   # Debounce ON
+      - delayed_off: 200ms  # Debounce OFF
+    on_press:
+      then:
+        - lambda: |-
+            id(inp_rep_nr) = id(inp_gr_addr2) + 7;
+            id(inp_rep_state) = 1;
+            id(send_inp_rep).execute();
+    on_release:
+      then:
+        - lambda: |-
+            id(inp_rep_nr) = id(inp_gr_addr2) + 7;
+            id(inp_rep_state) = 0;
+            id(send_inp_rep).execute();
+
+  - platform: gpio
+    id: sens22
+    pin:
+      number: GPIO14       # Change to your sensor's pin
+      mode: INPUT_PULLUP   # Use pull-up if sensor is open-drain
+      inverted: true       # Invert if sensor pulls low when active
+    name: "gr2_det2"
+    device_class: occupancy # Change to motion, door, etc. if needed
+    filters:
+      - delayed_on: 100ms   # Debounce ON
+      - delayed_off: 200ms  # Debounce OFF
+    on_press:
+      then:
+        - lambda: |-
+            id(inp_rep_nr) = id(inp_gr_addr2) + 6;
+            id(inp_rep_state) = 1;
+            id(send_inp_rep).execute();
+    on_release:
+      then:
+        - lambda: |-
+            id(inp_rep_nr) = id(inp_gr_addr2) + 6;
+            id(inp_rep_state) = 0;
+            id(send_inp_rep).execute();
+
+  - platform: gpio
+    id: sens23
+    pin:
+      number: GPIO27       # Change to your sensor's pin
+      mode: INPUT_PULLUP   # Use pull-up if sensor is open-drain
+      inverted: true       # Invert if sensor pulls low when active
+    name: "gr2_det3"
+    device_class: occupancy # Change to motion, door, etc. if needed
+    filters:
+      - delayed_on: 100ms   # Debounce ON
+      - delayed_off: 200ms  # Debounce OFF
+    on_press:
+      then:
+        - lambda: |-
+            id(inp_rep_nr) = id(inp_gr_addr2) + 5;
+            id(inp_rep_state) = 1;
+            id(send_inp_rep).execute();
+    on_release:
+      then:
+        - lambda: |-
+            id(inp_rep_nr) = id(inp_gr_addr2) + 5;
+            id(inp_rep_state) = 0;
+            id(send_inp_rep).execute();
+
+  - platform: gpio
+    id: sens24
+    pin:
+      number: GPIO26       # Change to your sensor's pin
+      mode: INPUT_PULLUP   # Use pull-up if sensor is open-drain
+      inverted: true       # Invert if sensor pulls low when active
+    name: "gr2_det4"
+    device_class: occupancy # Change to motion, door, etc. if needed
+    filters:
+      - delayed_on: 100ms   # Debounce ON
+      - delayed_off: 200ms  # Debounce OFF
+    on_press:
+      then:
+        - lambda: |-
+            id(inp_rep_nr) = id(inp_gr_addr2) + 4;
+            id(inp_rep_state) = 1;
+            id(send_inp_rep).execute();
+    on_release:
+      then:
+        - lambda: |-
+            id(inp_rep_nr) = id(inp_gr_addr2) + 4;
+            id(inp_rep_state) = 0;
+            id(send_inp_rep).execute();
+
+  - platform: gpio
+    id: sens25
+    pin:
+      number: GPIO25       # Change to your sensor's pin
+      mode: INPUT_PULLUP   # Use pull-up if sensor is open-drain
+      inverted: true       # Invert if sensor pulls low when active
+    name: "gr2_det5"
+    device_class: occupancy # Change to motion, door, etc. if needed
+    filters:
+      - delayed_on: 100ms   # Debounce ON
+      - delayed_off: 200ms  # Debounce OFF
+    on_press:
+      then:
+        - lambda: |-
+            id(inp_rep_nr) = id(inp_gr_addr2) + 3;
+            id(inp_rep_state) = 1;
+            id(send_inp_rep).execute();
+    on_release:
+      then:
+        - lambda: |-
+            id(inp_rep_nr) = id(inp_gr_addr2) + 3;
+            id(inp_rep_state) = 0;
+            id(send_inp_rep).execute();
+
+  - platform: gpio
+    id: sens26
+    pin:
+      number: GPIO33       # Change to your sensor's pin
+      mode: INPUT_PULLUP   # Use pull-up if sensor is open-drain
+      inverted: true       # Invert if sensor pulls low when active
+    name: "gr2_det6"
+    device_class: occupancy # Change to motion, door, etc. if needed
+    filters:
+      - delayed_on: 100ms   # Debounce ON
+      - delayed_off: 200ms  # Debounce OFF
+    on_press:
+      then:
+        - lambda: |-
+            id(inp_rep_nr) = id(inp_gr_addr2) + 2;
+            id(inp_rep_state) = 1;
+            id(send_inp_rep).execute();
+    on_release:
+      then:
+        - lambda: |-
+            id(inp_rep_nr) = id(inp_gr_addr2) + 2;
+            id(inp_rep_state) = 0;
+            id(send_inp_rep).execute();
+
+  - platform: gpio
+    id: sens27
+    pin:
+      number: GPIO32       # Change to your sensor's pin
+      mode: INPUT_PULLUP   # Use pull-up if sensor is open-drain
+      inverted: true       # Invert if sensor pulls low when active
+    name: "gr2_det7"
+    device_class: occupancy # Change to motion, door, etc. if needed
+    filters:
+      - delayed_on: 100ms   # Debounce ON
+      - delayed_off: 200ms  # Debounce OFF
+    on_press:
+      then:
+        - lambda: |-
+            id(inp_rep_nr) = id(inp_gr_addr2) + 1;
+            id(inp_rep_state) = 1;
+            id(send_inp_rep).execute();
+    on_release:
+      then:
+        - lambda: |-
+            id(inp_rep_nr) = id(inp_gr_addr2) + 1;
+            id(inp_rep_state) = 0;
+            id(send_inp_rep).execute();
+
+  - platform: gpio
+    id: sens28
+    pin:
+      number: GPIO35       # Change to your sensor's pin
+#      mode: INPUT_PULLUP   # Use pull-up if sensor is open-drain
+      inverted: true       # Invert if sensor pulls low when active
+    name: "gr2_det8"
+    device_class: occupancy # Change to motion, door, etc. if needed
+    filters:
+      - delayed_on: 100ms   # Debounce ON
+      - delayed_off: 200ms  # Debounce OFF
+    on_press:
+      then:
+        - lambda: |-
+            id(inp_rep_nr) = id(inp_gr_addr2);
+            id(inp_rep_state) = 1;
+            id(send_inp_rep).execute();
+    on_release:
+      then:
+        - lambda: |-
+            id(inp_rep_nr) = id(inp_gr_addr2);
+            id(inp_rep_state) = 0;
+            id(send_inp_rep).execute();
